@@ -1,14 +1,14 @@
 {
-  "name": "create-sanket-app",
-  "version": "1.0.0",
-  "description": "create-sanket-app is a CLI tool that helps you quickly scaffold backend projects with Node.js and Express. It offers options for setting up TypeScript or JavaScript, integrates CORS and Morgan middleware, and supports environment variables with dotenv. With built-in error handling and optional Docker support, it automates the creation of a ready-to-use backend structure, allowing you to get started fast. Just run npx create-sanket-app and follow the interactive prompts!",
+  "name": "launch-node-app",
+  "version": "1.5.0",
+  "description": "launch-node-app is a CLI tool that helps you quickly scaffold backend projects with Node.js and Express. It offers options for setting up TypeScript or JavaScript, integrates CORS and Morgan middleware, and supports environment variables with dotenv. With built-in error handling and optional Docker support, it automates the creation of a ready-to-use backend structure, allowing you to get started fast. Just run npx launch-node-app and follow the interactive prompts!",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
-    "create-sanket-app": "./index.js"
+    "launch-node-app": "./index.js"
   },
   "keywords": [
     "cli",

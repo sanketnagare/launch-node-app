@@ -112,12 +112,20 @@ inquirer.prompt(questions).then(async (answers) => {
     const packageJsonPath = path.join(projectDir, "package.json");
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 
-    // Define npm run dev and npm run watch
-    packageJson.scripts = {
-      ...packageJson.scripts,
-      dev: "nodemon src/app.ts", // Starts the development server
-      watch: "tsc -w", // Watches and compiles TypeScript into dist/
-    };
+    // Define npm run dev and npm run watch based on the language
+    if (answers.language === "TypeScript") {
+      packageJson.scripts = {
+        ...packageJson.scripts,
+        dev: "nodemon src/app.ts", // Starts the TypeScript dev server
+        watch: "tsc -w", // Watches and compiles TypeScript into dist/
+      };
+    } else {
+      packageJson.scripts = {
+        ...packageJson.scripts,
+        dev: "nodemon src/app.js", // Starts the JavaScript dev server
+        watch: "", // No watch command for JavaScript
+      };
+    }
 
     // Write the updated package.json back to disk
     fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
@@ -202,36 +210,43 @@ inquirer.prompt(questions).then(async (answers) => {
 
     console.log("Created ErrorHandler class in utils/errorHandler.ts");
 
-    // Create basic files
-    const appFileContent = (enableCORS, morganLogging, envFile) => {
+    // Create basic files (JS or TS based on selection)
+    const appFileContent = (enableCORS, morganLogging, envFile, language) => {
       // Start with basic imports
-      let imports = `
-import express from 'express';
-`;
+      let imports = "";
 
-      // Conditionally add dotenv import
-      if (envFile) {
-        imports += `import dotenv from 'dotenv';\n`;
-      }
-
-      // Conditionally add CORS import
-      if (enableCORS) {
-        imports += `import cors from 'cors';\n`;
-      }
-
-      // Conditionally add Morgan import
-      if (morganLogging) {
-        imports += `import morgan from 'morgan';\n`;
+      if (language === "TypeScript") {
+        imports += `import express from 'express';\n`;
+        if (envFile) {
+          imports += `import dotenv from 'dotenv';\n`;
+        }
+        if (enableCORS) {
+          imports += `import cors from 'cors';\n`;
+        }
+        if (morganLogging) {
+          imports += `import morgan from 'morgan';\n`;
+        }
+      } else {
+        imports += `const express = require('express');\n`;
+        if (envFile) {
+          imports += `require('dotenv').config();\n`;
+        }
+        if (enableCORS) {
+          imports += `const cors = require('cors');\n`;
+        }
+        if (morganLogging) {
+          imports += `const morgan = require('morgan');\n`;
+        }
       }
 
       // Start the Express app setup
       let appSetup = `
-const app = express();
-app.use(express.json());
-`;
+    const app = express();
+    app.use(express.json());
+    `;
 
-      // Conditionally configure dotenv
-      if (envFile) {
+      // Conditionally configure dotenv for TypeScript
+      if (language === "TypeScript" && envFile) {
         appSetup =
           `dotenv.config(); // Load environment variables from .env file\n` +
           appSetup;
@@ -249,34 +264,54 @@ app.use(express.json());
 
       // The rest of the app code (listening on a port, etc.)
       const remainingSetup = `
-export const envMode = process.env.NODE_ENV || 'development';  // Default to 'development'
+    const envMode = process.env.NODE_ENV || 'development';  // Default to 'development'
+    
+    // Define the port from the environment variable or default to 3000
+    const port = process.env.PORT || 3000;
+    
+    // Start the server on the specified port
+    app.listen(port, () => {
+      console.log(\`Server running in \${envMode} mode on port \${port}\`);
+    });
+    
+    app.get('/', (req, res) => {
+      res.send('Hello World');
+    });
+    `;
 
-// Define the port from the environment variable or default to 3000
-const port = process.env.PORT || 3000;
-
-// Start the server on the specified port
-app.listen(port, () => {
-  console.log(\`Server running in \${envMode} mode on port \${port}\`);
-});
-
-app.get('/', (req, res) => {
-  res.send('Hello World');
-});
-
-export default app;
-`;
-
-      // Return the full content with imports, conditional middleware, and the rest of the app
-      return imports + appSetup + remainingSetup;
+      // Export the app and envMode based on the language selected
+      if (language === "TypeScript") {
+        return (
+          imports +
+          appSetup +
+          remainingSetup +
+          "export { app, envMode }; export default app;"
+        );
+      } else {
+        return (
+          imports +
+          appSetup +
+          remainingSetup +
+          "module.exports = { app, envMode };"
+        );
+      }
     };
 
     // Usage
-    const appFilePath = path.join(srcDir, "app.ts");
+    const appFilePath =
+      answers.language === "TypeScript"
+        ? path.join(srcDir, "app.ts")
+        : path.join(srcDir, "app.js");
+
     fs.writeFileSync(
       appFilePath,
-      appFileContent(answers.enableCORS, answers.morganLogging, answers.envFile)
+      appFileContent(
+        answers.enableCORS,
+        answers.morganLogging,
+        answers.envFile,
+        answers.language
+      )
     );
-    
 
     if (answers.envFile) {
       const envContent = `PORT=3000
@@ -332,8 +367,45 @@ const errorMiddleware = (err: ErrorHandler, req: Request, res: Response, next: N
 
 export default errorMiddleware;`;
 
-    const errorMiddlewarePath = path.join(srcDir, "middlewares", "error.ts");
+    const errorMiddlewarePath =
+      answers.language === "TypeScript"
+        ? path.join(srcDir, "middlewares", "error.ts")
+        : path.join(srcDir, "middlewares", "error.js");
+
     fs.writeFileSync(errorMiddlewarePath, errorMiddlewareContent);
+
+    // If Docker is selected, create a Dockerfile
+    if (answers.docker) {
+      const dockerfileContent = `
+FROM node:20
+
+# Create and set the working directory
+WORKDIR /usr/src/app
+
+# Copy package.json and package-lock.json to the working directory
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy the rest of the application code to the working directory
+COPY . .
+
+# Set the environment variable if using dotenv
+${answers.envFile ? "ENV NODE_ENV=production" : ""}
+
+# Expose the application port
+EXPOSE 3000
+
+# Define the command to run the application
+CMD ["npm", "run", "dev"]
+`;
+
+      const dockerFilePath = path.join(projectDir, "Dockerfile");
+      fs.writeFileSync(dockerFilePath, dockerfileContent);
+
+      console.log("\nDockerfile created successfully!");
+    }
 
     console.log(
       "\nProject structure created successfully with ErrorHandler class, error middleware, and npm scripts!"
